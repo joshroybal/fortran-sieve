@@ -11,6 +11,8 @@ program eratosthenes
    read *, n
    if (n .lt. 1) stop
 
+   !if (n <= LIMIT) call pp(n)
+
    if (npub(n) <= LIMIT) then
       print *, 'simple sieve'
       call smsv(n, parr, cnt)
@@ -35,5 +37,10 @@ program eratosthenes
    cnt = nthp(n)
    call cpu_time(t2)
    print *, 'prime no.', n, ' =', cnt
+   print *, 'elapsed time = ', t2 - t1, ' seconds'
+   
+   call cpu_time(t1)
+   call gaps()
+   call cpu_time(t2)
    print *, 'elapsed time = ', t2 - t1, ' seconds'
 end program eratosthenes

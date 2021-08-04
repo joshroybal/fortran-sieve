@@ -28,6 +28,25 @@ module sieve
          end do
       end subroutine smsv
 
+      subroutine cmpseg(lo, hi, n, p, s)
+         ! dummy argumentes
+         integer, intent(in) :: lo, hi, n
+         integer, intent(in), dimension(n) :: p
+         logical, intent(out), dimension(hi-lo+1) :: s
+         ! local data
+         integer :: i, j, k
+         ! processing
+         s = .true.
+         do i = 1, n
+            j = (lo/p(i))*p(i)
+            !j = lo-mod(lo, p(i))
+            if (j < lo) j = j+p(i)
+            do k = j, hi, p(i)
+               s(k-lo+1) = .false.
+            end do
+         end do
+      end subroutine cmpseg
+
       subroutine sgsv(n, parr, cnt)
          ! find and count the prime nos. <= n
          ! dummy arguments
@@ -35,7 +54,7 @@ module sieve
          integer, intent(out), dimension(:) :: parr
          integer, intent(out) :: cnt
          ! local data
-         integer :: i, j, k, ssiz, psiz, lo
+         integer :: i, ssiz, psiz, lo, hi
          logical, dimension(int(sqrt(real(n)))+1) :: sieve
          ! processing
          ! compute base primes
@@ -43,22 +62,15 @@ module sieve
          call smsv(ssiz, parr, cnt)
          psiz = cnt
          ! compute subsequent segments
-         do i = ssiz+1, n, ssiz
+         do lo = ssiz+1, n, ssiz
             ! compute current segment
-            sieve = .true.
-            do j = 1, psiz
-               lo = (i/parr(j))*parr(j)
-               if (lo < i) lo = lo+parr(j)
-               do k = lo, i+ssiz-1, parr(j)
-                  sieve(k-i+1) = .false.
-               end do
-            end do
+            hi = min(lo+ssiz-1, n)
+            call cmpseg(lo, hi, psiz, parr, sieve)
             ! compute and count primes found in current segement
-            do j = 1, ssiz
-               if (i+j-1 > n) return
-               if (sieve(j)) then
+            do i = lo, hi
+               if (sieve(i-lo+1)) then
                   cnt = cnt+1
-                  parr(cnt) = i+j-1
+                  parr(cnt) = i
                end if
             end do
          end do
@@ -69,47 +81,74 @@ module sieve
          ! dummy argument
          integer, intent(in) :: n
          ! local data
-         integer :: m, i, j, k, cnt, psiz
+         integer :: i, cnt, ssiz, psiz, lo, hi
          integer, dimension(npub(int(sqrt(real(n)))+1)) :: parr
          logical, dimension(int(sqrt(real(n)))+1) :: sieve
          ! processing
          print *, size(sieve), size(parr)
-         m = int(sqrt(real(n))) + 1
+         ssiz = int(sqrt(real(n))) + 1
          ! compute base primes
-         call smsv(m, parr, cnt)
+         call smsv(ssiz, parr, cnt)
          do i = 1, min(cnt, n)
             write (*,'(i12)',advance='no') parr(i)
             if (mod(i, 6) == 0) print *,
          end do
          psiz = cnt
          ! compute sieves and primes for subsequent m sized segments
-         do i = m+1, n, m
+         do lo = ssiz+1, n, ssiz
             ! compute the next sieve segment
-            sieve = .true.
-            do j = 1, psiz
-               k = (i/parr(j))*parr(j)+1
-               if (k < i) k=k+parr(j)
-               do
-                  if (k > i+m) exit
-                  sieve(k-i) = .false.
-                  k = k+parr(j)
-               end do
-            end do            
+            hi = min(lo+ssiz-1, n)
+            call cmpseg(lo, hi, psiz, parr, sieve)
             ! print primes in segment above
-            do j = 1, m
-               if (i+j-1 > n) then
+            do i = lo, hi
+               if (i > n) then
                   print *,
                   return
                end if
-               if (sieve(j)) then
+               if (sieve(i-lo+1)) then
                   cnt = cnt+1
-                  write (*,'(i12)',advance='no') i+j-1
+                  write (*,'(i12)',advance='no') i
                   if (mod(cnt, 6) == 0) print *,
                end if
             end do
          end do
          if (mod(cnt, 6) /= 0) print *,
       end subroutine pp
+
+      subroutine gaps()
+         ! local data
+         integer, parameter :: SIZ = 2**34
+         integer :: i, gap, maxgap, p1, p2, psiz, ssiz, lo, hi
+         integer, dimension(npub(SIZ)) :: p
+         logical, dimension(int(sqrt(real(SIZ)))) :: seg
+         ! processing
+         ssiz = int(sqrt(real(SIZ)))
+         call smsv(ssiz, p, psiz)
+         maxgap = 0
+         do i = 2, psiz
+            gap = p(i)-p(i-1)-1
+            if (gap > maxgap) then
+               print *, p(i-1), p(i), gap
+               maxgap = gap
+            end if
+         end do
+         p1 = p(psiz)
+         do lo = ssiz+1, SIZ, ssiz
+            hi = min(lo+ssiz-1, SIZ)
+            call cmpseg(lo, hi, psiz, p, seg)
+            do i = lo, hi
+               if (seg(i-lo+1)) then
+                  p2 = i
+                  gap = p2-p1-1
+                  if (gap > maxgap) then
+                     print *, p1, p2, gap
+                     maxgap = gap
+                  end if
+                  p1 = p2
+               end if
+            end do
+         end do
+      end subroutine gaps
 
       ! number theoretic size of logical array allocation on the stack
       function np(n) result(parr)
@@ -119,7 +158,7 @@ module sieve
          ! function result 
          integer, dimension(npub(nthpub(n))) :: parr
          ! local variables
-         integer :: i, j, k, ssiz, psiz, cnt, lo
+         integer :: i, ssiz, psiz, cnt, lo, hi
          logical, dimension(nthpub(n)) :: sieve
          ! processing
          ssiz = nthpub(n)
@@ -127,26 +166,20 @@ module sieve
          call smsv(ssiz, parr, cnt)
          psiz = cnt
          ! compute sieves and primes for subsequent m sized segments
-         i = ssiz+1
+         lo = ssiz+1
          do
             ! compute current segment
-            sieve = .true.
-            do j = 1, psiz
-               lo = (i/parr(j))*parr(j)
-               if (lo < i) lo = lo+parr(j)
-               do k = lo, i+ssiz-1, parr(j)
-                  sieve(k-i+1) = .false.
-               end do
-            end do
+            hi = lo+ssiz-1
+            call cmpseg(lo, hi, psiz, parr, sieve)
             ! compute the primes in the segment above
-            do j = 1, ssiz
-               if (sieve(j)) then
+            do i = 1, ssiz
+               if (sieve(i)) then
                   cnt = cnt+1
-                  parr(cnt) = i+j-1
+                  parr(cnt) = lo+i-1
                   if (cnt == n) return
                end if
             end do
-            i = i+ssiz
+            lo = lo+ssiz
          end do
       end function np
 
@@ -157,43 +190,35 @@ module sieve
          ! function result location
          integer :: p
          ! local data
-         integer :: i, j, k, m, siz, cnt
+         integer :: i, ssiz, psiz, cnt, lo, hi
          integer, dimension(npub(nthpub(n))) :: parr       
          logical, dimension(nthpub(n)) :: sieve
          ! processing
-         m = nthpub(n)
+         ssiz = nthpub(n)
          ! compute base primes
-         call smsv(m, parr, cnt)
+         call smsv(ssiz, parr, cnt)
          if (cnt > n) then
             p = parr(n)
             return
          end if
-         siz = cnt
+         psiz = cnt
          ! compute sieves and primes for subsequent m sized segments
-         i = m+1
+         lo = ssiz+1
          do
             ! compute the next sieve segment
-            sieve = .true.
-            do j = 1, siz
-               k = (i/parr(j))*parr(j)
-               if (k < i) k=k+parr(j)
-               do
-                  if (k > i+m-1) exit
-                  sieve(k-i+1) = .false.
-                  k = k+parr(j)
-               end do
-            end do
+            hi = lo+ssiz-1
+            call cmpseg(lo, hi, psiz, parr, sieve)
             ! count primes found in current sieve segment
-            do j = 1, m
-               if (sieve(j)) then
+            do i = lo, hi
+               if (sieve(i-lo+1)) then
                   cnt = cnt+1
                   if (cnt == n) then
-                     p = i+j-1
+                     p = i
                      return
                   end if
                end if
             end do
-            i = i+m
+         lo = lo+ssiz
          end do
       end function nthp
 
